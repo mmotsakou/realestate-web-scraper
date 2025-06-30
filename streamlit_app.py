@@ -1,53 +1,85 @@
+# Requirements:
+# streamlit
+# requests
+# beautifulsoup4
+
 import streamlit as st
 import requests
 from bs4 import BeautifulSoup
 import re
 
 st.set_page_config(page_title="Real Estate Listing Estimator", layout="centered")
+st.title("🏘️ Real Estate Listing Counter + Installment Calculator")
 
-st.title("🏘️ Real Estate Listing Counter")
-st.write("Enter a real estate website URL to estimate the number of property listings.")
+st.write("Enter a real estate website URL (e.g. https://www.realestatecroatia.com/hrv/) to estimate the number of property listings.")
 
+# --- User input
 url = st.text_input("Website URL", placeholder="https://www.example.com")
 
-keywords = [
-    'real estate', 'properties', 'listings', 'apartments', 'houses',
-    'immobilien', 'imoti', 'nekretnine', 'nepremičnine', 'домове', 'недвижими', 'stanova'
+# --- Real estate keywords (localized)
+listing_keywords = [
+    "nekretnina", "nekretnine", "immobilien", "listings", "ads", "properties",
+    "imóveis", "inmuebles", "αγγελίες", "ιδιοκτησίες", "annonser", "προϊόντα",
 ]
 
-def fetch_listing_count(url):
-    try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0'
-        }
-        response = requests.get(url, headers=headers, timeout=10)
-        soup = BeautifulSoup(response.text, 'html.parser')
+# --- Extraction logic
+def find_listing_count(html):
+    soup = BeautifulSoup(html, "html.parser")
+    text = soup.get_text(separator=" ")
 
-        # Extract visible text
-        text_blocks = soup.find_all(text=True)
-        candidate_blocks = []
+    # Search for keywords with nearby numbers
+    pattern = r"(\d{1,3}(?:[.,]\d{3})*)(?:\s*)(?:{})".format("|".join(listing_keywords))
+    matches = re.findall(pattern, text, flags=re.IGNORECASE)
 
-        for t in text_blocks:
-            txt = t.strip().lower()
-            if any(k in txt for k in keywords):
-                candidate_blocks.append(txt)
+    if matches:
+        cleaned = []
+        for match in matches:
+            num = match.replace('.', '').replace(',', '')
+            try:
+                cleaned.append(int(num))
+            except:
+                continue
+        if cleaned:
+            return max(cleaned)
 
-        filtered_text = " ".join(candidate_blocks)
-        numbers = re.findall(r'\b\d{3,}\b', filtered_text)
-        numbers = [int(n.replace('.', '').replace(',', '')) for n in numbers]
+    return None
 
-        if numbers:
-            return max(numbers)
-        else:
-            return None
-    except Exception as e:
-        return f"Error: {e}"
-
+# --- Fetch & run
 if url:
     with st.spinner("🔍 Crawling and analyzing..."):
-        result = fetch_listing_count(url)
+        try:
+            headers = {"User-Agent": "Mozilla/5.0"}
+            res = requests.get(url, headers=headers, timeout=10)
+            html = res.text
+            count = find_listing_count(html)
+            if count:
+                st.success(f"✅ Estimated number of listings: **{count:,}**")
+            else:
+                st.warning("⚠️ Could not find a valid number near real estate keywords.")
+        except Exception as e:
+            st.error(f"❌ Error: {e}")
 
-    if isinstance(result, int):
-        st.success(f"✅ Estimated number of listings: **{result:,}**")
-    else:
-        st.error(result if isinstance(result, str) else "⚠️ No listing-related numbers found.")
+# --- Installment Calculator
+st.markdown("---")
+st.subheader("💰 Estimate Installment Plan")
+
+property_price = st.number_input("Average Property Price (€)", min_value=1000, step=1000, value=100000)
+down_payment_percent = st.slider("Down Payment (%)", 0, 100, 20)
+interest_rate = st.slider("Annual Interest Rate (%)", 0.0, 15.0, 3.0)
+loan_years = st.slider("Loan Term (Years)", 1, 40, 25)
+
+loan_amount = property_price * (1 - down_payment_percent / 100)
+monthly_rate = interest_rate / 100 / 12
+months = loan_years * 12
+
+if monthly_rate > 0:
+    monthly_payment = loan_amount * (monthly_rate * (1 + monthly_rate) ** months) / ((1 + monthly_rate) ** months - 1)
+else:
+    monthly_payment = loan_amount / months
+
+total_cost = monthly_payment * months + property_price * (down_payment_percent / 100)
+
+# Output
+st.write(f"📉 Loan Amount: €{loan_amount:,.0f}")
+st.write(f"💸 Estimated Monthly Payment: **€{monthly_payment:,.2f}**")
+st.write(f"💰 Total Payable Over {loan_years} Years: €{total_cost:,.2f}")
