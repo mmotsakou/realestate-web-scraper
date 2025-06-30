@@ -28,7 +28,7 @@ def find_listing_count(html):
     text = soup.get_text(separator=" ")
 
     # Search for keywords with nearby numbers
-    pattern = r"(\d{1,3}(?:[.,]\d{3})*)(?:\s*)(?:{})".format("|".join(listing_keywords))
+    pattern = r"(\d{{1,3}}(?:[.,]\d{{3}})*)(?:\s*)(?:{})".format("|".join(listing_keywords))
     matches = re.findall(pattern, text, flags=re.IGNORECASE)
 
     if matches:
